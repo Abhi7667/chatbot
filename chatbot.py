@@ -1,32 +1,3 @@
-import os
-import csv
-import datetime
-import streamlit as st
-import json
-import random
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.linear_model import LogisticRegression
-
-# Load intents JSON file
-with open('intents.json') as file:
-    data = json.load(file)
-
-# Preprocess data
-tags = []
-patterns = []
-for intent in data['intents']:
-    for pattern in intent['patterns']:
-        patterns.append(pattern)
-        tags.append(intent['tag'])
-
-# Fit the vectorizer
-vectorizer = TfidfVectorizer()
-X = vectorizer.fit_transform(patterns)
-
-# Train the model
-model = LogisticRegression()
-model.fit(X, tags)
-
 # Define chat function
 def chat(user_input):
     input_vector = vectorizer.transform([user_input])
@@ -36,6 +7,33 @@ def chat(user_input):
             return random.choice(intent['responses'])
 
 counter = 0
+
+def speak(text):
+    """Function to make the chatbot speak in a separate thread."""
+    def run_speech():
+        #engine.say(text)
+        engine.runAndWait()
+
+    # Run the speech in a separate thread
+    threading.Thread(target=run_speech).start()
+
+def listen():
+    """Function to listen for user speech."""
+    recognizer = sr.Recognizer()
+    with sr.Microphone() as source:
+        recognizer.adjust_for_ambient_noise(source)
+        print("Listening...")
+        audio = recognizer.listen(source)
+        try:
+            text = recognizer.recognize_google(audio)
+            print("You said: ", text)
+            return text
+        except sr.UnknownValueError:
+            print("Sorry, I did not understand that.")
+            return None
+        except sr.RequestError:
+            print("Sorry, the speech service is down.")
+            return None
 
 def main():
     global counter
@@ -54,24 +52,50 @@ def main():
                 csv_writer.writerow(['User Input', 'Chatbot Response', 'Timestamp'])
                 
         counter += 1
-        user_input = st.text_input("You:", key=f"user_input_{counter}")
         
-        if user_input:
-            # Convert the user input to a string
-            user_input_str = str(user_input)
+        # Option to toggle between text or voice
+        input_type = st.radio("Choose input method:", ["Text", "Voice"])
+        
+        if input_type == "Text":
+            # Text input (chat)
+            user_input = st.text_input("You:", key=f"user_input_{counter}")
             
-            response = chat(user_input)
-            st.text_area("Chatbot:", value=response, height=120, max_chars=None, key=f"chatbot_{counter}")
-            timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            
-            with open('chat_log.csv', 'a', newline='', encoding='utf-8') as csvfile:
-                csv_writer = csv.writer(csvfile)
-                csv_writer.writerow([user_input_str, response, timestamp])
+            if user_input:
+                # Process text input
+                user_input_str = str(user_input)
+                response = chat(user_input_str)
+                st.text_area("Chatbot:", value=response, height=120, max_chars=None, key=f"chatbot_{counter}")
+                speak(response)  # Convert the response to speech
+                timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 
-            if response.lower() in ['goodbye', 'bye']:
-                st.write("Thank you for chatting with me. Have a great day!")
-                st.stop()
+                with open('chat_log.csv', 'a', newline='', encoding='utf-8') as csvfile:
+                    csv_writer = csv.writer(csvfile)
+                    csv_writer.writerow([user_input_str, response, timestamp])
                 
+                if response.lower() in ['goodbye', 'bye']:
+                    st.write("Thank you for chatting with me. Have a great day!")
+                    st.stop()
+
+        elif input_type == "Voice":
+            # Voice input
+            voice_input_button = st.button("Speak")
+            if voice_input_button:
+                user_input = listen()
+                if user_input:
+                    st.text(f"You (Voice): {user_input}")
+                    response = chat(user_input)
+                    st.text_area("Chatbot:", value=response, height=120, max_chars=None, key=f"chatbot_voice_{counter}")
+                    speak(response)  # Convert the response to speech
+                    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    with open('chat_log.csv', 'a', newline='', encoding='utf-8') as csvfile:
+                        csv_writer = csv.writer(csvfile)
+                        csv_writer.writerow([user_input, response, timestamp])
+                    
+                    if response.lower() in ['goodbye', 'bye']:
+                        st.write("Thank you for chatting with me. Have a great day!")
+                        st.stop()
+
     elif choice == "Conversation History":
         st.header("Conversation History")
         with open('chat_log.csv', 'r', encoding='utf-8') as csvfile:
@@ -84,17 +108,18 @@ def main():
                 st.markdown("------")
                 
     elif choice == "About":
-        st.write("The goal of this project is to create a chatbot that can understand and respond to user inputs using NLP techniques.")
+        st.subheader("Project Goal:")
+        st.write("The aim of this project is to develop a chatbot capable of understanding and responding to user inputs through Natural Language Processing (NLP) techniques, combined with machine learning algorithms for effective interaction.")
         st.subheader("Project Overview:")
         st.write("""
-        The project is divided into two parts:
+        This project is structured into two main components:
         
-        1. NLP techniques and Logistic Regression algorithm are used to train the chatbot on labeled data.
-        2. Streamlit is used for building the chatbot interface.
+        1. NLP & Machine Learning: The chatbot is trained using NLP techniques and the Logistic Regression algorithm on labeled datasets to improve its ability to process and respond to user queries accurately.
+        2. Streamlit Interface: Streamlit is utilized to create a user-friendly interface for seamless interaction with the chatbot, enabling users to easily input questions and receive responses in real time.
         """)
         
         st.subheader("Dataset:")
-        st.write("The dataset consists of various intents, patterns, and responses used to train the chatbot.")
+        st.write("The dataset contains intents, patterns, and responses used to train the chatbot, enabling it to accurately understand user queries and provide relevant responses.")
 
 if __name__ == '__main__':
     main()
